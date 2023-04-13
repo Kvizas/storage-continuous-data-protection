@@ -2,6 +2,7 @@ import os
 import io
 import json
 import flask
+import math
 from time import time
 
 from classes.FileMetadata import FileMetadata
@@ -14,8 +15,6 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
-
-
 
 class GoogleDriveAPISource(Source):
 
@@ -44,15 +43,17 @@ class GoogleDriveAPISource(Source):
 
         request = flask.request
 
-        service = authenticate()
+        if request.headers.get('X-Goog-Channel-Token') != os.getenv('GOOGLE_DRIVE_WEBHOOK_TOKEN') or request.headers.get("X-Goog-Resource-State") != "change":
+            log("Received an unauthorized watcher request.")
 
-        # TODO check request is it the right one (check token)
+        service = authenticate()
 
         page_token = self.start_page_token
         while True:
             response = service.changes().list(
                 pageToken=page_token,
-                fields="newStartPageToken, nextPageToken, changes(removed, file(id, name, parents, mimeType, size, md5Checksum, lastModifyingUser(displayName), modifiedTime))"
+                fields="newStartPageToken, nextPageToken, changes(removed, file(id, name, parents, mimeType, size, md5Checksum, lastModifyingUser(displayName), modifiedTime))",
+                supportsAllDrives=True
             ).execute()
 
             changes = response.get('changes', [])
@@ -84,13 +85,16 @@ class GoogleDriveAPISource(Source):
         service = authenticate()
         page_token = None
         folders_structure = self.get_folders_structure()
+        log("Structure got. Continuing")
         while True:
             log("Starting new batch.", "info", self.source_name)
 
             response = service.files().list(
                 fields="nextPageToken, files(id, name, parents, mimeType, size, md5Checksum, lastModifyingUser(displayName), modifiedTime)",
                 q="mimeType != 'application/vnd.google-apps.folder'",
-                pageSize=100,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                pageSize=400,
                 pageToken=page_token
             ).execute()
 
@@ -141,24 +145,28 @@ class GoogleDriveAPISource(Source):
         download_task.start()
 
     
-    def download_file(self, file_metadata: FileMetadata) -> None:
+    def download_file(self, file_metadata: FileMetadata) -> FileMetadata:
         """ Downloads file from this source. """
 
         service = authenticate()
 
-        log("Downloading: " + file_metadata.file_path, "debug", self.source_name)
+        log("Downloading file.", "debug", self.source_name, file_metadata.file_path)
 
-        if file_metadata.mime_type in self._get_exportable_mime_types():
+        exportable = file_metadata.mime_type in self._get_exportable_mime_types()
+
+        if exportable:
             response = service.files().export_media(
                 fileId=file_metadata.id,
                 mimeType=self._get_export_mime_type(file_metadata.mime_type)
             )
+
+            file_metadata.modifiedTime = math.trunc(file_metadata.modifiedTime/100)*100
         else: 
             response = service.files().get_media(
                 fileId=file_metadata.id
             )
             
-        output_path = 'temp/' + file_metadata.file_path
+        output_path = ('temp/' + file_metadata.file_path).encode('utf-8')
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         
         fh = io.FileIO(output_path, 'wb')
@@ -168,7 +176,9 @@ class GoogleDriveAPISource(Source):
         while done is False:
             status, done = downloader.next_chunk()
 
-        log("Downloaded " + file_metadata.file_path, "info", self.source_name)
+        log("File downloaded.", "info", self.source_name, file_metadata.file_path)
+
+        return file_metadata
 
 
     def get_folders_structure(self) -> dict:
@@ -181,17 +191,24 @@ class GoogleDriveAPISource(Source):
 
         service = authenticate()
 
+        i = 0
         while True:
+            i += 1
             response = service.files().list(
                 fields="nextPageToken, files(parents, name, id)", 
-                q="mimeType = 'application/vnd.google-apps.folder'", 
-                pageSize=100, 
+                q="mimeType = 'application/vnd.google-apps.folder'",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
+                pageSize=400, 
                 pageToken=page_token
             ).execute()
 
+            log("Structure request no. " + str(i), "debug", self.source_name)
+
             parents = {} # {folder_id: parent_id, ...}
             for folder in response.get('files', []):
-                parents[folder['id']] = folder['parents']
+                if folder.get('parents', None) != None:
+                    parents[folder['id']] = folder['parents']
 
             names = {} # {folder_id: name, ...}
             for folder in response.get('files', []):
@@ -206,7 +223,7 @@ class GoogleDriveAPISource(Source):
                     return folders_structure[folder_id]
 
                 if folder_id not in parents:
-                    file = service.files().get(fileId=folder_id, fields="name").execute()
+                    file = service.files().get(fileId=folder_id, fields="name", supportsAllDrives=True).execute()
                     folders_structure[folder_id] = file.get("name")
                     return file.get("name")
 

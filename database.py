@@ -25,8 +25,9 @@ def setup_tables() -> None:
             `type` varchar(8) NOT NULL,
             `message` varchar(3072) NOT NULL,
             `source` varchar(64) NOT NULL,
-            `datetime` datetime NOT NULL DEFAULT current_timestamp()
-        );
+            `datetime` datetime NOT NULL DEFAULT current_timestamp(),
+            `file_path` varchar(255)
+        ) CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         """
     )
 
@@ -44,7 +45,7 @@ def setup_tables() -> None:
             `size` int(11) NOT NULL,
             `backup_datetime` datetime NOT NULL DEFAULT current_timestamp(),
             `md5_checksum` varchar(32)
-        );
+        ) CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         CREATE INDEX file_path ON changes (file_path);
         CREATE INDEX modified_by ON changes (modified_by);
         """

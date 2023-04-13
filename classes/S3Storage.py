@@ -18,7 +18,7 @@ class S3Storage:
         file_path (string): Absolute path to file where it will be stored in S3. (eg. disk/projects/hello.txt)
         """
 
-        with open("temp/" + file_path, 'rb') as file:
+        with open(("temp/" + file_path).encode('utf-8'), 'rb') as file:
             obj = self.s3.Object(
                 os.getenv('AWS_BUCKET'),
                 file_path + str(file_metadata.modified_time)

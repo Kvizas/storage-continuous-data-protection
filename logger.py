@@ -2,7 +2,7 @@ from database import connect_to_db
 from datetime import datetime
 
 
-def log(message, log_type="DEBUG", source="INTERNAL"):
+def log(message, log_type="DEBUG", source="INTERNAL", file_path=None):
     """
     Logs message into SQL logs table
     """
@@ -11,11 +11,11 @@ def log(message, log_type="DEBUG", source="INTERNAL"):
 
     now = datetime.now()
 
-    print(f"[{now}] {log_type} / {source} - " + message)
-
     db = connect_to_db()
     cursor = db.cursor()
 
     cursor.execute("""
-    INSERT INTO logs (type, message, source, datetime) VALUES (%s, %s, %s, %s)
-    """, (log_type, message, source, now.isoformat()))
+    INSERT INTO logs (type, message, source, datetime, file_path) VALUES (%s, %s, %s, %s, %s)
+    """, (log_type, message, source, now.isoformat(), file_path))
+
+    db.commit()

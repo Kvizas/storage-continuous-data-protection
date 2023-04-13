@@ -71,7 +71,7 @@ def create_watcher(service):
         return
 
     watcher_resource_id = response.get('resourceId')
-    log("Watcher successfuly created on " + os.getenv("ROOT_URL") + webhook_route, "info", source_name)
+    log(f"Watcher successfuly created on {os.getenv("ROOT_URL") + webhook_route}, resourceId: {watcher_resource_id}", "info", source_name)
 
 
 

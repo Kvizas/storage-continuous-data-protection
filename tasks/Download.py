@@ -25,7 +25,7 @@ class DownloadTask(AbstractTask):
                 return
 
             self.status = "downloading"
-            self.source.download_file(self.file_metadata)
+            self.file_metadata = self.source.download_file(self.file_metadata)
 
             self.status = "uploading"
             storage = S3Storage()
@@ -34,11 +34,14 @@ class DownloadTask(AbstractTask):
             self.status = "registering"
             self.file_metadata.register_as_captured()
 
-            self.status = "cleaning_up"
-            os.remove("temp/" + self.file_metadata.file_path)
+            try:
+                self.status = "cleaning_up"
+                os.remove("temp/" + self.file_metadata.file_path)
+            except:
+                pass
 
             self.status = "done"
 
         except:
             self.status = "failed"
-            log(f"Error while downloading {self.file_metadata.file_path} \n" + traceback.format_exc(), "error", self.source.source_name)
+            log(f"Error while downloading: \n" + traceback.format_exc(), "warn", self.source.source_name, self.file_metadata.file_path)

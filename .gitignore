@@ -4,4 +4,6 @@ temp
 **/token.json
 **/credentials.json
 
+*__pycache__
+
 .env
